@@ -20,13 +20,13 @@ contract TokenNFT is ERC721, ERC721Enumerable, ERC721Pausable, AccessControl, ER
     string memory tokenSymbol,
     address defaultAdmin,
     address pauser,
-    // address burner,
+    address burner,
     address minter
   ) ERC721(tokenName, tokenSymbol) {
     _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
     _grantRole(PAUSER_ROLE, pauser);
     _grantRole(MINTER_ROLE, minter);
-    _grantRole(BURNER_ROLE, minter);
+    _grantRole(BURNER_ROLE, burner);
 
     // _grantRole(BURNER_ROLE, burner);
   }

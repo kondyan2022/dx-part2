@@ -4,12 +4,15 @@ pragma solidity ^0.8.20;
 
 import "./TokenNFT.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Lottery is AccessControl {
   error CollectionAlreadyExist();
   error CollectionAlreadyParticipated();
   error CollectionNotExist();
+  error CollectionAlreadyUsed();
   error InvalidStatus();
+  error CollectionNotProvideEnoughRights();
 
   event Won_NFT_Number(uint32 indexed _number, WinnerLevel indexed _level, address indexed _collection, uint _id);
   event Lottery_Draw_Started(uint32 indexed _number, WinnerLevel indexed _level);
@@ -45,7 +48,7 @@ contract Lottery is AccessControl {
   }
 
   uint32 drawNumber;
-  State private _state;
+  IERC20 private _tokenReward;
   mapping(address => bool) private _participatedCollections;
   mapping(address => bool) private _currentCollections;
   TokenNFT[] public currentCollections;
@@ -55,12 +58,13 @@ contract Lottery is AccessControl {
   uint private _unavailableTokenCount;
 
   LotteryLevel[4] private _loterryLevel;
-
+  State private _state;
   address[] public winners;
   mapping(address => uint256) private _winnerRewards;
   uint public burnReward;
 
-  constructor() {
+  constructor(IERC20 tokenReward) {
+    _tokenReward = tokenReward;
     _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _loterryLevel[0].name = WinnerLevel.Level3;
     _loterryLevel[1].name = WinnerLevel.Level2;
@@ -104,6 +108,10 @@ contract Lottery is AccessControl {
         volume += winnerCount * _loterryLevel[level].amount;
       }
     }
+    for (uint i; i < currentCollections.length; i += 1) {
+      volume += _burnedTokenCountByContract[address(currentCollections[i])];
+    }
+
     return volume;
   }
 
@@ -111,7 +119,13 @@ contract Lottery is AccessControl {
     return _state;
   }
 
-  function startLottery(uint x, uint y, uint z, uint j, uint b) external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.NotActive)  {
+  function startLottery(
+    uint x,
+    uint y,
+    uint z,
+    uint j,
+    uint b
+  ) external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.NotActive) {
     _state = State.Active;
     _loterryLevel[0].amount = j;
     _loterryLevel[1].amount = z;
@@ -122,23 +136,9 @@ contract Lottery is AccessControl {
     emit New_Lottery_State(_state);
   }
 
-  //   function cancelLottery() external onlyStatus(State.Active) {
-  //     _state = State.NotActive;
-  //     _unavailableTokenCount = 0;
-  //     for (uint i; i < currentCollections.length; i += 1) {
-  //       delete _currentCollections[address(currentCollections[i])];
-  //     }
-  //     delete currentCollections;
-
-  //     drawNumber -= 1;
-  //     emit New_Lottery_State(_state);
-  //   }
-
   function readyLottery() external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.Active) {
     _state = State.Ready;
-    for (uint i; i < currentCollections.length; i += 1) {
-      currentCollections[i].pause();
-    }
+    _pause(true);
     emit New_Lottery_State(_state);
   }
 
@@ -149,22 +149,33 @@ contract Lottery is AccessControl {
     if (_participatedCollections[collection]) {
       revert CollectionAlreadyParticipated();
     }
+
+    if (
+      !(TokenNFT(collection).hasRole(TokenNFT(collection).BURNER_ROLE(), address(this)) &&
+        TokenNFT(collection).hasRole(TokenNFT(collection).PAUSER_ROLE(), address(this)))
+    ) {
+      revert CollectionNotProvideEnoughRights();
+    }
+
     currentCollections.push(TokenNFT(collection));
     _unavailableTokenCount += _burnedTokenCountByContract[collection];
   }
 
-  //   function removeCollection(address collection) external onlyStatus(State.Active) {
-  //     if (!_currentCollections[collection]) {
-  //       revert CollectionNotExist();
-  //     }
-  //     for (uint i; i < currentCollections.length; i += 1) {
-  //       if (address(currentCollections[i]) == collection) {
-  //         currentCollections[i] = currentCollections[currentCollections.length - 1];
-  //       }
-  //     }
-  //     currentCollections.pop();
-  //     _unavailableTokenCount -= _burnedTokenCountByContract[collection];
-  //   }
+  function removeCollection(address collection) external onlyState(State.Active) {
+    if (!_currentCollections[collection]) {
+      revert CollectionNotExist();
+    }
+    if (_burnedTokenCountByContract[collection] > 0) {
+      revert CollectionAlreadyUsed();
+    }
+    for (uint i; i < currentCollections.length; i += 1) {
+      if (address(currentCollections[i]) == collection) {
+        currentCollections[i] = currentCollections[currentCollections.length - 1];
+        break;
+      }
+    }
+    currentCollections.pop();
+  }
 
   function burnToken(address collection, uint tokenId) external onlyState(State.Active) {
     if (!_currentCollections[collection]) {
@@ -231,6 +242,7 @@ contract Lottery is AccessControl {
     }
     _state = State.DrawOver;
     emit New_Lottery_State(_state);
+    _pause(false);
   }
 
   function payRewards() external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.DrawOver) {
@@ -239,7 +251,7 @@ contract Lottery is AccessControl {
         continue;
       }
       //   transfer here
-
+      _tokenReward.transfer(winners[i], _winnerRewards[winners[i]]);
       emit TransferReward(drawNumber, winners[i], _winnerRewards[winners[i]]);
       delete _winnerRewards[winners[i]];
     }
@@ -265,6 +277,12 @@ contract Lottery is AccessControl {
     delete currentCollections;
     _state = State.NotActive;
     emit New_Lottery_State(_state);
+  }
+
+  receive() external payable {}
+
+  function withdraw() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    payable(msg.sender).transfer(address(msg.sender).balance);
   }
 
   function _getCollectionsLength() internal view returns (uint, uint[] memory) {
@@ -301,5 +319,15 @@ contract Lottery is AccessControl {
 
   function _allreadyUsedNFT(address addr, uint number) private view returns (bool) {
     return _unavailableTokens[addr][number];
+  }
+
+  function _pause(bool stop) internal {
+    for (uint i; i < currentCollections.length; i += 1) {
+      if (stop) {
+        currentCollections[i].pause();
+      } else {
+        currentCollections[i].unpause();
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import "@nomicfoundation/hardhat-chai-matchers";
-import { Lottery, TokenNFT } from "../typechain-types";
+import { Lottery, TokenNFT, USDTTestToken } from "../typechain-types";
 import { TokenNFTInterface } from "../typechain-types/contracts/TokenNFT";
 
 function randomInteger(min: number, max: number) {
@@ -25,10 +25,14 @@ describe("Lottery", function () {
     const signers = await ethers.getSigners();
     const [deployer, user1, user2, user3, ...participants] = signers;
     //Create Lottery contract
+    const USDTTestTokenFactory = await ethers.getContractFactory("USDTTestToken");
+    const USDTtoken: USDTTestToken = await USDTTestTokenFactory.deploy();
+    await USDTtoken.waitForDeployment();
+
     const LotteryFactory = await ethers.getContractFactory("Lottery");
-    const lottery: Lottery = await LotteryFactory.deploy();
+    const lottery: Lottery = await LotteryFactory.deploy(USDTtoken);
     await lottery.waitForDeployment();
-    const lotteryAddress = await lottery.getAddress();
+    await (await USDTtoken.transfer(lottery, ethers.parseUnits("10000", 18))).wait();
 
     //   create NFT
     const TokenNFTFactory = await ethers.getContractFactory("TokenNFT");
@@ -41,6 +45,7 @@ describe("Lottery", function () {
         symbol,
         collectionOwner,
         lottery,
+        lottery,
         collectionOwner
       );
       await token.waitForDeployment();
@@ -52,22 +57,25 @@ describe("Lottery", function () {
       collectionList.push(token);
     }
 
-    return { lottery, collectionList, deployer, user1, user2, user3, signers };
+    return { lottery, collectionList, USDTtoken, deployer, user1, user2, user3, signers };
   }
   describe("Deployment", function () {
     it("should be created", async function () {
-      const { lottery, collectionList, deployer, user1, user2, user3, signers } = await loadFixture(deploy);
+      const { lottery, collectionList, USDTtoken, deployer, user1, user2, user3, signers } = await loadFixture(deploy);
       await (await lottery.startLottery(100000, 10000, 1000, 10, 1)).wait();
       await (await lottery.addCollection(collectionList[0])).wait();
       await (await lottery.addCollection(collectionList[2])).wait();
       await (await lottery.addCollection(collectionList[3])).wait();
-      console.log(await lottery.getPrizeFundVolume());
+      const rewardVolume = await lottery.getPrizeFundVolume();
+      console.log(rewardVolume);
       await (await lottery.readyLottery()).wait();
       await (await lottery.lotteryDraw()).wait();
+      const result = await lottery.getWinnerPayoutList();
+      console.log(result);
+      const tx = await lottery.payRewards();
+      tx.wait();
+      await expect(tx).to.be.changeTokenBalance(USDTtoken, lottery, -rewardVolume);
 
-      console.log(await lottery.getWinnerPayoutList());
-
-      await (await lottery.payRewards()).wait();
       await (await lottery.cleanCurrentDraw()).wait();
     });
   });
