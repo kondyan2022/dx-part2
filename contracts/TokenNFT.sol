@@ -46,7 +46,6 @@ contract TokenNFT is ERC721, ERC721Enumerable, ERC721Pausable, AccessControl, ER
 
   function burn(uint256 tokenId) public override onlyRole(BURNER_ROLE) {
     super.burn(tokenId);
-    // _update(address(0), tokenId, _msgSender());
   }
 
   // The following functions are overrides required by Solidity.

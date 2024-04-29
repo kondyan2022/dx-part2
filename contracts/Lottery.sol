@@ -3,6 +3,7 @@
 pragma solidity ^0.8.20;
 
 import "./TokenNFT.sol";
+import "@openzeppelin/contracts/access/IAccessControl.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -13,6 +14,7 @@ contract Lottery is AccessControl {
   error CollectionAlreadyUsed();
   error InvalidStatus();
   error CollectionNotProvideEnoughRights();
+  error NotNFTOwner();
 
   event Won_NFT_Number(uint32 indexed _number, WinnerLevel indexed _level, address indexed _collection, uint _id);
   event Lottery_Draw_Started(uint32 indexed _number, WinnerLevel indexed _level);
@@ -47,8 +49,8 @@ contract Lottery is AccessControl {
     uint number;
   }
 
-  uint32 drawNumber;
-  IERC20 private _tokenReward;
+  uint32 public drawNumber;
+  IERC20 public tokenReward;
   mapping(address => bool) private _participatedCollections;
   mapping(address => bool) private _currentCollections;
   TokenNFT[] public currentCollections;
@@ -57,31 +59,35 @@ contract Lottery is AccessControl {
   mapping(address => uint) private _burnedTokenCountByContract;
   uint private _unavailableTokenCount;
 
-  LotteryLevel[4] private _loterryLevel;
-  State private _state;
+  LotteryLevel[4] public lotteryLevels;
+  State public state;
   address[] public winners;
   mapping(address => uint256) private _winnerRewards;
   uint public burnReward;
 
-  constructor(IERC20 tokenReward) {
-    _tokenReward = tokenReward;
-    _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _loterryLevel[0].name = WinnerLevel.Level3;
-    _loterryLevel[1].name = WinnerLevel.Level2;
-    _loterryLevel[2].name = WinnerLevel.Level1;
-    _loterryLevel[3].name = WinnerLevel.Jackpot;
-    _loterryLevel[0].divider = 10;
-    _loterryLevel[1].divider = 100;
-    _loterryLevel[2].divider = 1000;
-    _state = State.NotActive;
-    emit New_Lottery_State(_state);
-  }
-
-  modifier onlyState(State state) {
-    if (_state != state) {
+  modifier onlyState(State _state) {
+    if (state != _state) {
       revert InvalidStatus();
     }
     _;
+  }
+
+  constructor(IERC20 _tokenReward) {
+    tokenReward = _tokenReward;
+    _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    lotteryLevels[0].name = WinnerLevel.Level3;
+    lotteryLevels[1].name = WinnerLevel.Level2;
+    lotteryLevels[2].name = WinnerLevel.Level1;
+    lotteryLevels[3].name = WinnerLevel.Jackpot;
+    lotteryLevels[0].divider = 10;
+    lotteryLevels[1].divider = 100;
+    lotteryLevels[2].divider = 1000;
+    state = State.NotActive;
+    emit New_Lottery_State(state);
+  }
+
+  function setRewardToken(address _token) external onlyState(State.NotActive) onlyRole(DEFAULT_ADMIN_ROLE) {
+    tokenReward = IERC20(_token);
   }
 
   function getWinnerPayoutList() external view returns (Item[] memory) {
@@ -98,25 +104,17 @@ contract Lottery is AccessControl {
     uint totalTickets;
     (totalTickets, ) = _getCollectionsLength();
     for (uint8 level; level < 4; level += 1) {
-      if (_loterryLevel[level].divider == 0) {
-        volume += _loterryLevel[level].amount;
+      if (lotteryLevels[level].divider == 0) {
+        volume += lotteryLevels[level].amount;
       } else {
-        uint winnerCount = totalTickets / _loterryLevel[level].divider;
+        uint winnerCount = totalTickets / lotteryLevels[level].divider;
         if (winnerCount == 0) {
           winnerCount = 1;
         }
-        volume += winnerCount * _loterryLevel[level].amount;
+        volume += winnerCount * lotteryLevels[level].amount;
       }
     }
-    for (uint i; i < currentCollections.length; i += 1) {
-      volume += _burnedTokenCountByContract[address(currentCollections[i])];
-    }
-
     return volume;
-  }
-
-  function getLotteryStatus() external view returns (State) {
-    return _state;
   }
 
   function startLottery(
@@ -126,20 +124,20 @@ contract Lottery is AccessControl {
     uint j,
     uint b
   ) external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.NotActive) {
-    _state = State.Active;
-    _loterryLevel[0].amount = j;
-    _loterryLevel[1].amount = z;
-    _loterryLevel[2].amount = y;
-    _loterryLevel[3].amount = x;
+    state = State.Active;
+    lotteryLevels[0].amount = j;
+    lotteryLevels[1].amount = z;
+    lotteryLevels[2].amount = y;
+    lotteryLevels[3].amount = x;
     burnReward = b;
     drawNumber += 1;
-    emit New_Lottery_State(_state);
+    emit New_Lottery_State(state);
   }
 
   function readyLottery() external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.Active) {
-    _state = State.Ready;
+    state = State.Ready;
     _pause(true);
-    emit New_Lottery_State(_state);
+    emit New_Lottery_State(state);
   }
 
   function addCollection(address collection) external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.Active) {
@@ -158,16 +156,15 @@ contract Lottery is AccessControl {
     }
 
     currentCollections.push(TokenNFT(collection));
+    _currentCollections[collection] = true;
     _unavailableTokenCount += _burnedTokenCountByContract[collection];
   }
 
-  function removeCollection(address collection) external onlyState(State.Active) {
+  function removeCollection(address collection) external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.Active) {
     if (!_currentCollections[collection]) {
       revert CollectionNotExist();
     }
-    if (_burnedTokenCountByContract[collection] > 0) {
-      revert CollectionAlreadyUsed();
-    }
+
     for (uint i; i < currentCollections.length; i += 1) {
       if (address(currentCollections[i]) == collection) {
         currentCollections[i] = currentCollections[currentCollections.length - 1];
@@ -175,18 +172,21 @@ contract Lottery is AccessControl {
       }
     }
     currentCollections.pop();
+    delete _currentCollections[collection];
+    _unavailableTokenCount -= _burnedTokenCountByContract[collection];
   }
 
   function burnToken(address collection, uint tokenId) external onlyState(State.Active) {
     if (!_currentCollections[collection]) {
       revert CollectionNotExist();
     }
-    TokenNFT(collection).burn(tokenId);
-    if (_winnerRewards[msg.sender] == 0) {
-      winners.push(msg.sender);
+    if (msg.sender != TokenNFT(collection).ownerOf(tokenId)) {
+      revert NotNFTOwner();
     }
-    _winnerRewards[msg.sender] += burnReward;
+    TokenNFT(collection).burn(tokenId);
+    tokenReward.transfer(msg.sender, burnReward);
     emit Won_NFT_Number(drawNumber, WinnerLevel.Burn, collection, tokenId);
+    emit TransferReward(drawNumber, msg.sender, burnReward);
     _burnedTokenCountByContract[collection] += 1;
     _unavailableTokenCount += 1;
   }
@@ -200,11 +200,11 @@ contract Lottery is AccessControl {
     for (uint8 level; level < 4; level += 1) {
       uint winnerCount;
 
-      emit Lottery_Draw_Started(drawNumber, _loterryLevel[level].name);
-      if (_loterryLevel[level].divider == 0) {
+      emit Lottery_Draw_Started(drawNumber, lotteryLevels[level].name);
+      if (lotteryLevels[level].divider == 0) {
         winnerCount = 1;
       } else {
-        winnerCount = totalTickets / _loterryLevel[level].divider;
+        winnerCount = totalTickets / lotteryLevels[level].divider;
         if (winnerCount == 0) {
           winnerCount = 1;
         }
@@ -217,7 +217,6 @@ contract Lottery is AccessControl {
         do {
           do {
             (random, bigRandom) = _getRandom(freeTickets, bigRandom);
-            //Get collection and position
             (winnerCol, winnerId) = _getNFT(collectionsIndexBound, random);
           } while (_allreadyUsedNFT(winnerCol, winnerId));
           (bool ok, bytes memory result) = address(winnerCol).call(
@@ -232,16 +231,16 @@ contract Lottery is AccessControl {
         if (_winnerRewards[winnerAddr] == 0) {
           winners.push(winnerAddr);
         }
-        _winnerRewards[winnerAddr] += _loterryLevel[level].amount;
-        emit Won_NFT_Number(drawNumber, _loterryLevel[level].name, winnerCol, winnerId);
+        _winnerRewards[winnerAddr] += lotteryLevels[level].amount;
+        emit Won_NFT_Number(drawNumber, lotteryLevels[level].name, winnerCol, winnerId);
         _unavailableTokens[winnerCol][winnerId] = true;
         _unavailableTokenCount += 1;
         freeTickets -= 1;
       }
-      emit Lottery_Draw_Finished(drawNumber, _loterryLevel[level].name);
+      emit Lottery_Draw_Finished(drawNumber, lotteryLevels[level].name);
     }
-    _state = State.DrawOver;
-    emit New_Lottery_State(_state);
+    state = State.DrawOver;
+    emit New_Lottery_State(state);
     _pause(false);
   }
 
@@ -251,14 +250,14 @@ contract Lottery is AccessControl {
         continue;
       }
       //   transfer here
-      _tokenReward.transfer(winners[i], _winnerRewards[winners[i]]);
+      tokenReward.transfer(winners[i], _winnerRewards[winners[i]]);
       emit TransferReward(drawNumber, winners[i], _winnerRewards[winners[i]]);
       delete _winnerRewards[winners[i]];
     }
     delete winners;
 
-    _state = State.Closed;
-    emit New_Lottery_State(_state);
+    state = State.Closed;
+    emit New_Lottery_State(state);
   }
 
   function cleanCurrentDraw() external onlyRole(DEFAULT_ADMIN_ROLE) onlyState(State.Closed) {
@@ -275,14 +274,20 @@ contract Lottery is AccessControl {
     }
     _unavailableTokenCount = 0;
     delete currentCollections;
-    _state = State.NotActive;
-    emit New_Lottery_State(_state);
+    state = State.NotActive;
+    emit New_Lottery_State(state);
   }
 
-  receive() external payable {}
+  function withdrawRewardTokens(address to, uint amount) public onlyRole(DEFAULT_ADMIN_ROLE) {
+    tokenReward.transfer(to, amount);
+  }
 
-  function withdraw() external onlyRole(DEFAULT_ADMIN_ROLE) {
-    payable(msg.sender).transfer(address(msg.sender).balance);
+  function withdrawRewardTokens(uint amount) external {
+    withdrawRewardTokens(msg.sender, amount);
+  }
+
+  function withdrawRewardTokens() external {
+    withdrawRewardTokens(msg.sender, tokenReward.balanceOf(address(this)));
   }
 
   function _getCollectionsLength() internal view returns (uint, uint[] memory) {
@@ -304,11 +309,11 @@ contract Lottery is AccessControl {
     return (random, big);
   }
 
-  function _random(uint module) private view returns (uint) {
-    return uint(keccak256(abi.encodePacked(block.timestamp, msg.sender, module)));
+  function _random(uint module) internal view returns (uint) {
+    return uint(keccak256(abi.encodePacked(block.timestamp, msg.sender, block.number + module)));
   }
 
-  function _getNFT(uint[] memory collectionIndexBound, uint number) private view returns (address, uint) {
+  function _getNFT(uint[] memory collectionIndexBound, uint number) internal view returns (address, uint) {
     uint index;
     while (number > collectionIndexBound[index] - 1) {
       number -= collectionIndexBound[index];
@@ -317,7 +322,7 @@ contract Lottery is AccessControl {
     return (address(currentCollections[index]), number);
   }
 
-  function _allreadyUsedNFT(address addr, uint number) private view returns (bool) {
+  function _allreadyUsedNFT(address addr, uint number) internal view returns (bool) {
     return _unavailableTokens[addr][number];
   }
 
