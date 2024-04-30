@@ -27,8 +27,6 @@ contract TokenNFT is ERC721, ERC721Enumerable, ERC721Pausable, AccessControl, ER
     _grantRole(PAUSER_ROLE, pauser);
     _grantRole(MINTER_ROLE, minter);
     _grantRole(BURNER_ROLE, burner);
-
-    // _grantRole(BURNER_ROLE, burner);
   }
 
   function pause() public onlyRole(PAUSER_ROLE) {

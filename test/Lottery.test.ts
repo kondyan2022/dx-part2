@@ -131,7 +131,7 @@ describe("Lottery", function () {
       await (await lottery.setRewardToken(USDTtoken)).wait();
     });
 
-    it("should not be add collection or execute any action if not start lottery ", async function () {
+    it("should not be added collection or execute any action if not start lottery ", async function () {
       const { lottery, collectionList } = await loadFixture(deploy);
       expect(await lottery.state()).to.be.eq(State.NotActive);
       await expect(lottery.addCollection(collectionList[0])).to.be.revertedWithCustomError(lottery, "InvalidStatus");
@@ -176,7 +176,7 @@ describe("Lottery", function () {
       );
     });
 
-    it("should not added if lottery have roles PAUSER and BURNER.", async function () {
+    it("should not be added if lottery has roles: PAUSER and BURNER.", async function () {
       const { lottery, collectionList, deployer, collectionOwners } = await loadFixture(deploy);
 
       const burnerRole = await collectionList[0].BURNER_ROLE();
@@ -199,7 +199,7 @@ describe("Lottery", function () {
       await (await lottery.addCollection(collectionList[0])).wait();
       await (await lottery.addCollection(collectionList[1])).wait();
     });
-    it("should burn token by owner. The owner receives a reward when he burns the token", async function () {
+    it("token should be burned by owner. The owner receives the reward in case token has been burned", async function () {
       const { lottery, USDTtoken, collectionList, nftOwners, signers } = await loadFixture(deploy);
       await (
         await lottery.startLottery(REWARDS.jackpot, REWARDS.level1, REWARDS.level2, REWARDS.level3, REWARDS.burn)
@@ -221,7 +221,7 @@ describe("Lottery", function () {
         "CollectionNotExist"
       );
     });
-    it("should be get calculation amount of the prize fund ", async function () {
+    it("should be obtained the calculation of the prize fund ", async function () {
       const { lottery, collectionList, nftOwners, signers } = await loadFixture(deploy);
       await (
         await lottery.startLottery(REWARDS.jackpot, REWARDS.level1, REWARDS.level2, REWARDS.level3, REWARDS.burn)
@@ -245,7 +245,7 @@ describe("Lottery", function () {
     });
   });
   describe("Lottery ready for draw", function () {
-    it("should be freeze collections before draw", async function () {
+    it("should freeze collections before draw", async function () {
       const { lottery, collectionList, nftOwners, signers } = await loadFixture(deploy);
       await (
         await lottery.startLottery(REWARDS.jackpot, REWARDS.level1, REWARDS.level2, REWARDS.level3, REWARDS.burn)
@@ -275,7 +275,7 @@ describe("Lottery", function () {
     });
   });
   describe("Lottery draw", function () {
-    it("should be draw", async function () {
+    it("should be drawn", async function () {
       const { lottery, collectionList, nftOwners, signers } = await loadFixture(deploy);
       await (
         await lottery.startLottery(REWARDS.jackpot, REWARDS.level1, REWARDS.level2, REWARDS.level3, REWARDS.burn)
