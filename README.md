@@ -30,7 +30,7 @@ npm run coverage
 
 - [`Lottery.sol`](./contracts/Lottery.sol) &mdash; lottery contract
 - [`TokenNFT.sol`](./contracts/TokenNFT.sol) &mdash; ERC721 contract.
-- [`USDTTestToken.sol`](./contracts/USDTTestToken.sol) &mdash; fully emulate [test USDT contract ](https://sepolia.etherscan.io/address/0x1531bc5de10618c511349f8007c08966e45ce8ef#writeContract) for hardhat tests
+- [`USDTTestToken.sol`](./contracts/USDTTestToken.sol) &mdash; fully emulate [test USDT contract ](https://sepolia.etherscan.io/address/0x1531bc5de10618c511349f8007c08966e45ce8ef) for hardhat tests
 
 ## Test coverage
 
@@ -43,11 +43,10 @@ npm run coverage
 
 ## Deployment to the Sepolia Testnet
 
-[`Lottery.sol`](https://sepolia.etherscan.io/address/0x26c31102e1c8856a112a85b16578d7b0700ce196)
+[`Lottery.sol`](https://sepolia.etherscan.io/address/0xAAF068D0CD880C7107589B7418e7455A7fd44b51)
 
-[`TokenNFT.sol#1`](https://sepolia.etherscan.io/address/0x26c31102e1c8856a112a85b16578d7b0700ce196)
-[`TokenNFT.sol#2`](https://sepolia.etherscan.io/address/0x26c31102e1c8856a112a85b16578d7b0700ce196)
-[`TokenNFT.sol#3`](https://sepolia.etherscan.io/address/0x26c31102e1c8856a112a85b16578d7b0700ce196)
+[`TokenNFT.sol#1`](https://sepolia.etherscan.io/address/0x92a39b842794877De89739c13ECe0190a6A3675A)
+[`TokenNFT.sol#2`](https://sepolia.etherscan.io/address/0x406E2B164caEFb365B84Ac96B5b31deBB5C29aEd)
 
 ## UA
 
