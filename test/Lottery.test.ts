@@ -38,11 +38,11 @@ describe("Lottery", function () {
   ];
 
   const REWARDS = {
-    jackpot: ethers.parseUnits("1000", 0),
-    level1: ethers.parseUnits("100", 0),
-    level2: ethers.parseUnits("10", 0),
-    level3: ethers.parseUnits("1", 0),
-    burn: ethers.parseUnits("0.1", 1),
+    jackpot: ethers.parseUnits("1000", 18),
+    level1: ethers.parseUnits("100", 18),
+    level2: ethers.parseUnits("10", 18),
+    level3: ethers.parseUnits("1", 18),
+    burn: ethers.parseUnits("0.1", 18),
   };
   const NFT_MIN_COUNT = 100;
   const NFT_MAX_COUNT = 399;
@@ -343,6 +343,9 @@ describe("Lottery", function () {
       await (await lottery.cleanCurrentDraw()).wait();
       expect(await lottery.state()).to.be.eq(State.NotActive);
       expect(await lottery.getWinnerPayoutList()).to.be.empty;
+      await expect(
+        lottery.connect(user1)["withdrawRewardTokens(address,uint256)"](user1, ethers.parseUnits("1", 18))
+      ).to.be.revertedWithCustomError(lottery, "AccessControlUnauthorizedAccount");
       let tx = await lottery["withdrawRewardTokens(address,uint256)"](user1, ethers.parseUnits("1", 18));
       await tx.wait();
       await expect(tx).to.be.changeTokenBalances(
